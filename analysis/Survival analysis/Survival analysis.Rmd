@@ -1,5 +1,5 @@
 ---
-title: "Retrieving all clinical annotations from TCGA"
+title: "Survival analysis using clinical annotations from TCGA"
 output: html_notebook
 author: "Michał Switnicki"
 date: "2016-06-22"
@@ -14,4 +14,16 @@ datasets <- list()
 for (i in 1:length(available_sets)){
   datasets[[available_sets[i]]] <- getFirehoseData(dataset=available_sets[i], runDate=running_date, forceDownload = TRUE, Clinic=TRUE)
 }
+```
+
+Secondly, read the marker annotations and match patients with the survival data:
+```{r}
+
+
+```
+
+Finally, perform survival analysis:
+```{r}
+
+
 ```
