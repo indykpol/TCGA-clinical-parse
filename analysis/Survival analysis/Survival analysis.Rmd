@@ -16,14 +16,37 @@ for (i in 1:length(available_sets)){
 }
 ```
 
-Secondly, read the marker annotations and match patients with the survival data:
+Secondly, read the marker annotations and match Fredrikson et al. samples with the survival data:
 ```{r}
-
-
+fredriksson_samples <- read_delim("D:/Git/TCGA-clinical-parse/data/tcga505.samples", "\t", escape_double = FALSE, col_names = c("sample_id", "cancer_type"))
+fredriksson_samples[fredriksson_samples[,2]=="CRC",2] <- "COAD" # replace CRC with updated TCGA symbol - COAD
+fredriksson_types <- levels(factor(fredriksson_samples[,2]))
+fredriksson_sets <- NULL
+for (i in 1:length(fredriksson_types)) {
+  fredriksson_sets[[fredriksson_types[i]]] <- intersect(rownames(datasets[[fredriksson_types[i]]]@Clinical), tolower(gsub("-", ".", substr(fredriksson_samples[fredriksson_samples[,2]==fredriksson_types[i],1],1,12))))
+}
+fredriksson_sets_survival <- NULL
+fredriksson_survivals <- NULL
+for (i in 1:length(fredriksson_types)) {
+  survival <- datasets[[fredriksson_types[i]]]@Clinical[fredriksson_sets[[fredriksson_types[i]]],3:5]
+  survival[which(survival[,1]==1),3] <- survival[which(survival[,1]==1),2]
+  survival <- survival[!is.na(survival[,3]),]
+  fredriksson_survivals[[fredriksson_types[i]]] <- survival
+  fredriksson_sets_survival[[fredriksson_types[i]]] <- rownames(survival[!is.na(survival[,3]),])
+}
+data.frame(all=summary(factor(fredriksson_samples[,2])), mapped=unlist(lapply(fredriksson_sets, length)), with_survival_data=unlist(lapply(fredriksson_sets_survival, length)))
 ```
-
+Median follow-up:
+```{r}
+data.frame(all=summary(factor(fredriksson_samples[,2])), mapped=unlist(lapply(fredriksson_sets, length)), with_survival_data=unlist(lapply(fredriksson_sets_survival, length)), median_follow_up=trunc(unlist(lapply(fredriksson_survivals, function(x) median(as.numeric(x[,3]))))))
+```
 Finally, perform survival analysis:
 ```{r}
-
-
+getwd()
+source("../../scripts/ggkm.R")
+clinicalData <- datasets[[1]]@Clinical[,3:5]
+clinicalData[is.na(clinicalData[,3]),3] = clinicalData[is.na(clinicalData[,3]),2]
+survivalData <- data.frame(Samples=rownames(clinicalData),
+                        Time=as.numeric(clinicalData[,3]),
+                        Censor=as.numeric(clinicalData[,1]))
 ```

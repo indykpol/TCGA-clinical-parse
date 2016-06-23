@@ -15,3 +15,26 @@ for (i in 1:length(available_sets)){
   datasets[[available_sets[i]]] <- getFirehoseData(dataset=available_sets[i], runDate=running_date, forceDownload = TRUE, Clinic=TRUE)
 }
 ```
+Check how many samples have clinical annotation:
+```{r}
+unlist(lapply(datasets, function(x) nrow(x@Clinical)))
+```
+Number of all clinical annotations fetched:
+```{r}
+sum(unlist(lapply(datasets, function(x) nrow(x@Clinical))))
+```
+Check how many samples have clinical follow-up annotation:
+```{r}
+all_sets_survival <- NULL
+all_survivals <- NULL
+for (i in 1:length(available_sets)) {
+  survival <- datasets[[available_sets[i]]]@Clinical[,3:5]
+  survival[which(survival[,1]==1),3] <- survival[which(survival[,1]==1),2]
+  survival <- survival[!is.na(survival[,3]),]
+  all_survivals[[available_sets[i]]] <- survival
+  all_sets_survival[[available_sets[i]]] <- rownames(survival[!is.na(survival[,3]),])
+}
+```
+```{r}
+data.frame(all=unlist(lapply(datasets, function(x) nrow(x@Clinical))), with_survival_data=unlist(lapply(all_sets_survival, length)), median_follow_up=trunc(unlist(lapply(all_survivals, function(x) median(as.numeric(x[,3]))))))
+```
