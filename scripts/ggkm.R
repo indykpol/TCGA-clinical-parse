@@ -1,4 +1,4 @@
-ggkm <- function(sfit,
+function(sfit,
                  table = TRUE,
                  returns = FALSE,
                  xlabs = "Time",
@@ -20,6 +20,7 @@ ggkm <- function(sfit,
     require(ggplot2)
     require(survival)
     require(gridExtra)
+    require(plyr)
     
     #################################
     # sorting the use of subsetting #
@@ -86,24 +87,19 @@ ggkm <- function(sfit,
     p <- ggplot( .df, aes(time, surv)) +
         geom_step(aes(linetype = strata), size = 0.7) +
         theme_bw() +
-        opts(axis.title.x = theme_text(vjust = 0.5)) +
+        theme(axis.title.x = element_text(vjust = 0.5)) +
         scale_x_continuous(xlabs, breaks = times, limits = xlims) +
         scale_y_continuous(ylabs, limits = ylims) +
-        opts(panel.grid.minor = theme_blank()) +
-        opts(legend.position = c(ifelse(m < 10, .28, .35),ifelse(d < 4, .25, .35))) +    # MOVE LEGEND HERE [first is x dim, second is y dim]
-        opts(legend.key = theme_rect(colour = NA)) +
+        theme(legend.position = c(ifelse(m < 10, .28, .35),ifelse(d < 4, .25, .35))) +    # MOVE LEGEND HERE [first is x dim, second is y dim]
+        theme(legend.key = element_rect(colour = NA)) +
         labs(linetype = ystrataname) +
-        opts(plot.margin = unit(c(0, 1, .5,ifelse(m < 10, 1.5, 2.5)),"lines")) +
-        opts(title = main)
+        theme(plot.margin = unit(c(0, 1, .5,ifelse(m < 10, 1.5, 2.5)),"lines")) +
+        ggtitle(main)
     
     ## Create a blank plot for place-holding
     ## .df <- data.frame()
     blank.pic <- ggplot(.df, aes(time, surv)) +
-        geom_blank() + theme_bw() +
-        opts(axis.text.x = theme_blank(),axis.text.y = theme_blank(),
-             axis.title.x = theme_blank(),axis.title.y = theme_blank(),
-             axis.ticks = theme_blank(),
-             panel.grid.major = theme_blank(),panel.border = theme_blank())
+        geom_blank() + theme_bw()
     
     #####################
     # p-value placement #
@@ -136,17 +132,15 @@ ggkm <- function(sfit,
                                  # scale_y_discrete(#format1ter = abbreviate,
                                  # breaks = 1:3,
                                  # labels = ystratalabs) +
-                                 scale_x_continuous("Numbers at risk", limits = xlims) +
-                                 opts(axis.title.x = theme_text(size = 10, vjust = 1),
-                                      panel.grid.major = theme_blank(), panel.grid.minor = theme_blank(),
-                                      panel.border = theme_blank(),axis.text.x = theme_blank(),
-                                      axis.ticks = theme_blank(),axis.text.y = theme_text(face = "bold",hjust = 1))
+                                 scale_x_continuous("Numbers at risk", limits = xlims) + theme_bw()
+                                 theme(axis.title.x = element_text(size = 10, vjust = 1),
+                                      axis.text.y = element_text(face = "bold",hjust = 1))
         
         data.table <- data.table +
-            opts(legend.position = "none") + xlab(NULL) + ylab(NULL)
+            theme(legend.position = "none") + xlab(NULL) + ylab(NULL)
         
         data.table <- data.table +
-            opts(plot.margin = unit(c(-1.5, 1, 0.1, ifelse(m < 10, 2.5, 3.5) - 0.28 * m), "lines")) # ADJUST POSITION OF TABLE FOR AT RISK
+            theme(plot.margin = unit(c(-1.5, 1, 0.1, ifelse(m < 10, 2.5, 3.5) - 0.28 * m), "lines")) # ADJUST POSITION OF TABLE FOR AT RISK
         
         #######################
         # Plotting the graphs #
