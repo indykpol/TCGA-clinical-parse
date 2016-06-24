@@ -18,7 +18,7 @@ for (i in 1:length(available_sets)){
 
 Secondly, read the marker annotations and match Fredrikson et al. samples with the survival data:
 ```{r}
-fredriksson_samples <- read_delim("D:/Git/TCGA-clinical-parse/data/tcga505.samples", "\t", escape_double = FALSE, col_names = c("sample_id", "cancer_type"))
+fredriksson_samples <- read.delim(file="../../data/tcga505.samples", sep="\t", col.names = c("sample_id", "cancer_type"), stringsAsFactors = F)
 fredriksson_samples[fredriksson_samples[,2]=="CRC",2] <- "COAD" # replace CRC with updated TCGA symbol - COAD
 fredriksson_types <- levels(factor(fredriksson_samples[,2]))
 fredriksson_sets <- NULL
@@ -42,11 +42,6 @@ data.frame(all=summary(factor(fredriksson_samples[,2])), mapped=unlist(lapply(fr
 ```
 Finally, perform survival analysis:
 ```{r}
-getwd()
 source("../../scripts/ggkm.R")
-clinicalData <- datasets[[1]]@Clinical[,3:5]
-clinicalData[is.na(clinicalData[,3]),3] = clinicalData[is.na(clinicalData[,3]),2]
-survivalData <- data.frame(Samples=rownames(clinicalData),
-                        Time=as.numeric(clinicalData[,3]),
-                        Censor=as.numeric(clinicalData[,1]))
+
 ```
