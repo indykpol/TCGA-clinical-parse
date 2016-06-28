@@ -31,16 +31,87 @@ for (i in 1:length(fredriksson_types)) {
   survival <- datasets[[fredriksson_types[i]]]@Clinical[fredriksson_sets[[fredriksson_types[i]]],3:5]
   survival[which(survival[,1]==1),3] <- survival[which(survival[,1]==1),2]
   survival <- survival[!is.na(survival[,3]),]
+  rownames_temp <- rownames(survival)
+  survival <- as.data.frame(apply(survival,2,as.numeric))
+  rownames(survival) <- rownames_temp
   fredriksson_survivals[[fredriksson_types[i]]] <- survival
   fredriksson_sets_survival[[fredriksson_types[i]]] <- rownames(survival[!is.na(survival[,3]),])
 }
+rm(rownames_temp)
 data.frame(all=summary(factor(fredriksson_samples[,2])), mapped=unlist(lapply(fredriksson_sets, length)), with_survival_data=unlist(lapply(fredriksson_sets_survival, length)))
 ```
 Median follow-up:
 ```{r}
 data.frame(all=summary(factor(fredriksson_samples[,2])), mapped=unlist(lapply(fredriksson_sets, length)), with_survival_data=unlist(lapply(fredriksson_sets_survival, length)), median_follow_up=trunc(unlist(lapply(fredriksson_survivals, function(x) median(as.numeric(x[,3]))))))
 ```
-Finally, perform survival analysis:
+Read-in the mutation anotations:
+```{r}
+fredriksson_signif_calls <- read.delim(file="../../data/sanger.tcga505.overlap.bed.intersect.uniq.gene", sep="\t", col.names = c("sample_id", "cancer_type", "element_ID", "element_type", "nearest_gene", "nearest_CDS"), stringsAsFactors = F)
+fredriksson_signif_calls[fredriksson_signif_calls[,2]=="CRC",2] <- "COAD" # replace CRC with updated TCGA symbol - COAD
+fredriksson_signif_calls$sample_id <- tolower(gsub("-", ".", substr(fredriksson_signif_calls$sample_id, 1, 12)))
+```
+Identify element-cancer type pairs to test:
+```{r}
+summary <- summary(factor(paste(fredriksson_signif_calls$cancer_type, fredriksson_signif_calls$element_ID, sep="_")), maxsum=nrow(fredriksson_signif_calls))
+names <- names(summary[which(summary >=4)])
+```
+```{r}
+source("../../scripts/strsplit2matrix.R")
+test_pairs <- as.data.frame(strsplit2matrix(names,"_"))
+test_pairs$element_type <- NA
+test_pairs$number_affected <- NA
+test_pairs$number_withSurvival <- NA
+test_pairs$p_val <- NA
+```
+
+```{r warning=FALSE}
+for (i in 1:nrow(test_pairs)) {
+  temp_table <- fredriksson_survivals[[test_pairs[i,1]]]
+  test_pairs$element_type[i] <- fredriksson_signif_calls[which(fredriksson_signif_calls$cancer_type==test_pairs[i,1] & fredriksson_signif_calls$element_ID==test_pairs[i,2])[1],4]
+  temp_table$marker_status <- 0
+  temp_table[fredriksson_signif_calls[which(fredriksson_signif_calls$cancer_type==test_pairs[i,1] & fredriksson_signif_calls$element_ID==test_pairs[i,2]),1],"marker_status"] <- 1
+  temp_table <- temp_table[!is.na(temp_table$days_to_last_followup),]
+  sfit <- survfit(Surv(days_to_last_followup,vital_status)~marker_status, data=temp_table)
+  sdiff <- survdiff(eval(sfit$call$formula), data = eval(sfit$call$data))
+  pval <- pchisq(sdiff$chisq,length(sdiff$n) - 1,lower.tail = FALSE)
+  test_pairs$p_val[i] <- pval
+  test_pairs$number_withSurvival[i] <- nrow(temp_table)
+  test_pairs$number_affected[i] <- length(which(temp_table[,4]==1))
+}
+test_pairs <- test_pairs[which(test_pairs$number_affected>=4),]
+test_pairs$adjust_pval <- NA
+test_pairs$adjust_pval[which(test_pairs$element_type=="cds")] <- p.adjust(test_pairs$p_val[which(test_pairs$element_type=="cds")], method="BH")
+test_pairs$adjust_pval[which(test_pairs$element_type!="cds")] <- p.adjust(test_pairs$p_val[which(test_pairs$element_type!="cds")], method="BH")
+colnames(test_pairs)[1:2] <- c("cancer_type", "candidate")
+test_pairs
+```
+Write the results into tables:
+```{r}
+write.table(test_pairs, file="4+samples_FredrikksonSignif_survival.tab", sep="\t", quote=FALSE)
+```
+Perform combination of p-values across cancer types:
+```{r}
+source("../../scripts/fishersMethod.R")
+candidate_combinations <- data.frame(candidate=names(summary(factor(test_pairs$candidate))))
+candidate_combinations$element_type <- NA
+candidate_combinations$n_types_combined <- NA
+candidate_combinations$fishers_pval <- NA
+for (i in 1:nrow(candidate_combinations)) {
+  candidate_combinations$element_type[i] <- test_pairs$element_type[which(test_pairs$candidate==candidate_combinations$candidate[i])[1]]
+  candidate_combinations$n_types_combined[i] <- length(test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])])
+  candidate_combinations$fishers_pval[i] <- fishersMethod(test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])])
+}
+candidate_combinations <- candidate_combinations[which(candidate_combinations$n_types_combined>1),]
+candidate_combinations$adjust_pval <- NA
+candidate_combinations$adjust_pval[which(candidate_combinations$element_type=="cds")] <- p.adjust(candidate_combinations$fishers_pval[which(candidate_combinations$element_type=="cds")], method="BH")
+candidate_combinations$adjust_pval[which(candidate_combinations$element_type!="cds")] <- p.adjust(candidate_combinations$fishers_pval[which(candidate_combinations$element_type!="cds")], method="BH")
+
+```
+Write the results into tables:
+```{r}
+write.table(candidate_combinations, file="4+samples_FredrikksonSignif_survival_acrossTypesCombinations.tab", sep="\t", quote=FALSE)
+```
+Finally, plot some survival analyses:
 ```{r}
 source("../../scripts/ggkm.R")
 

@@ -1,17 +1,17 @@
-function(sfit,
-                 table = TRUE,
-                 returns = FALSE,
-                 xlabs = "Time",
-                 ylabs = "Survival Probability",
-                 xlims = c(0,max(sfit$time)),
-                 ylims = c(0,1),
-                 ystratalabs = NULL,
-                 ystrataname = NULL,
-                 timeby = 100,
-                 main = "Kaplan-Meier Plot",
-                 pval = TRUE,
-                 subs = NULL,
-                 ...) {
+ggkm <- function(sfit,
+         table = TRUE,
+         returns = FALSE,
+         xlabs = "Time",
+         ylabs = "Survival Probability",
+         xlims = c(0,max(sfit$time)),
+         ylims = c(0,1),
+         ystratalabs = NULL,
+         ystrataname = NULL,
+         timeby = 100,
+         main = "Kaplan-Meier Plot",
+         pval = TRUE,
+         subs = NULL,
+         ...) {
     
     #############
     # libraries #
@@ -124,17 +124,15 @@ function(sfit,
         )
         risk.data$strata <- factor(risk.data$strata, levels=rev(levels(risk.data$strata)))
         
-        data.table <- ggplot(risk.data,aes(x = time, y = strata, label = format(n.risk, nsmall = 0))) +
-            #, color = strata)) +
+        data.table <- ggplot(risk.data, aes(x = time, y = strata, label = format(n.risk, nsmall = 0))) +
+		# , color = strata
             geom_text(size = 3.5) + theme_bw() +
             scale_y_discrete(breaks = as.character(levels(risk.data$strata)),
                              labels = rev(ystratalabs)) +
-                                 # scale_y_discrete(#format1ter = abbreviate,
-                                 # breaks = 1:3,
-                                 # labels = ystratalabs) +
-                                 scale_x_continuous("Numbers at risk", limits = xlims) + theme_bw()
-                                 theme(axis.title.x = element_text(size = 10, vjust = 1),
-                                      axis.text.y = element_text(face = "bold",hjust = 1))
+            # scale_y_discrete(#format1ter = abbreviate,
+            # breaks = 1:3,
+            # labels = ystratalabs) +
+            scale_x_continuous("Numbers at risk", limits = xlims) + theme_bw() + theme(axis.title.x = element_text(size = 10, vjust = 1), axis.text.y = element_text(face = "bold",hjust = 1), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(),axis.text.x = element_blank(), axis.ticks = element_blank())
         
         data.table <- data.table +
             theme(legend.position = "none") + xlab(NULL) + ylab(NULL)
