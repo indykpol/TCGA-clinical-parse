@@ -1,8 +1,8 @@
 ---
-title: "Survival analysis using clinical annotations from TCGA for Henrik"
+title: "Malene's candidates survival analysis using clinical annotations from TCGA"
 output: html_notebook
 author: "Michał Switnicki"
-date: "2016-06-22"
+date: "2016-06-29"
 ---
 This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook.
 
@@ -44,50 +44,47 @@ Median follow-up:
 ```{r}
 data.frame(all=summary(factor(fredriksson_samples[,2])), mapped=unlist(lapply(fredriksson_sets, length)), with_survival_data=unlist(lapply(fredriksson_sets_survival, length)), median_follow_up=trunc(unlist(lapply(fredriksson_survivals, function(x) median(as.numeric(x[,3]))))))
 ```
-Read-in the mutation anotations:
+Read-in the candidate anotations:
 ```{r}
-fredriksson_signif_calls <- read.delim(file="../../data/sanger.tcga505.overlap.bed.intersect.uniq.gene", sep="\t", col.names = c("sample_id", "cancer_type", "element_ID", "element_type", "nearest_gene", "nearest_CDS"), stringsAsFactors = F)
-fredriksson_signif_calls[fredriksson_signif_calls[,2]=="CRC",2] <- "COAD" # replace CRC with updated TCGA symbol - COAD
-fredriksson_signif_calls$sample_id <- tolower(gsub("-", ".", substr(fredriksson_signif_calls$sample_id, 1, 12)))
+fredriksson_malenes_calls <- read.delim(file="../../data/ncdDetect_mut_status.txt", sep="\t", col.names = c("sample_id", "cancer_type", "element_ID"), stringsAsFactors = F)
+fredriksson_malenes_calls[fredriksson_malenes_calls[,2]=="CRC",2] <- "COAD" # replace CRC with updated TCGA symbol - COAD
+fredriksson_malenes_calls$sample_id <- tolower(gsub("-", ".", substr(fredriksson_malenes_calls$sample_id, 1, 12)))
 ```
 Identify element-cancer type pairs to test:
 ```{r}
-summary <- summary(factor(paste(fredriksson_signif_calls$cancer_type, fredriksson_signif_calls$element_ID, sep="_")), maxsum=nrow(fredriksson_signif_calls))
+summary <- summary(factor(paste(fredriksson_malenes_calls$cancer_type, fredriksson_malenes_calls$element_ID, sep="_")), maxsum=nrow(fredriksson_malenes_calls))
 names <- names(summary[which(summary >=4)])
 ```
 ```{r}
 source("../../scripts/strsplit2matrix.R")
-test_pairs <- as.data.frame(strsplit2matrix(names,"_"))
-test_pairs$element_type <- NA
-test_pairs$number_affected <- NA
-test_pairs$number_withSurvival <- NA
-test_pairs$p_val <- NA
+test_pairs_malene <- as.data.frame(strsplit2matrix(names,"_"))
+test_pairs_malene$number_affected <- NA
+test_pairs_malene$number_withSurvival <- NA
+test_pairs_malene$p_val <- NA
 ```
 
 ```{r warning=FALSE}
-for (i in 1:nrow(test_pairs)) {
-  temp_table <- fredriksson_survivals[[test_pairs[i,1]]]
-  test_pairs$element_type[i] <- fredriksson_signif_calls[which(fredriksson_signif_calls$cancer_type==test_pairs[i,1] & fredriksson_signif_calls$element_ID==test_pairs[i,2])[1],4]
+for (i in 1:nrow(test_pairs_malene)) {
+  temp_table <- fredriksson_survivals[[test_pairs_malene[i,1]]]
   temp_table$marker_status <- 0
-  temp_table[fredriksson_signif_calls[which(fredriksson_signif_calls$cancer_type==test_pairs[i,1] & fredriksson_signif_calls$element_ID==test_pairs[i,2]),1],"marker_status"] <- 1
+  temp_table[fredriksson_malenes_calls[which(fredriksson_malenes_calls$cancer_type==test_pairs_malene[i,1] & fredriksson_malenes_calls$element_ID==paste(test_pairs_malene[i,2:3], collapse="_")),1],"marker_status"] <- 1
   temp_table <- temp_table[!is.na(temp_table$days_to_last_followup),]
   sfit <- survfit(Surv(days_to_last_followup,vital_status)~marker_status, data=temp_table)
   sdiff <- survdiff(eval(sfit$call$formula), data = eval(sfit$call$data))
   pval <- pchisq(sdiff$chisq,length(sdiff$n) - 1,lower.tail = FALSE)
-  test_pairs$p_val[i] <- pval
-  test_pairs$number_withSurvival[i] <- nrow(temp_table)
-  test_pairs$number_affected[i] <- length(which(temp_table[,4]==1))
+  test_pairs_malene$p_val[i] <- pval
+  test_pairs_malene$number_withSurvival[i] <- nrow(temp_table)
+  test_pairs_malene$number_affected[i] <- length(which(temp_table[,4]==1))
 }
-test_pairs <- test_pairs[which(test_pairs$number_affected>=4),]
-test_pairs$adjust_pval <- NA
-test_pairs$adjust_pval[which(test_pairs$element_type=="cds")] <- p.adjust(test_pairs$p_val[which(test_pairs$element_type=="cds")], method="BH")
-test_pairs$adjust_pval[which(test_pairs$element_type!="cds")] <- p.adjust(test_pairs$p_val[which(test_pairs$element_type!="cds")], method="BH")
-colnames(test_pairs)[1:2] <- c("cancer_type", "candidate")
-test_pairs
+test_pairs_malene <- test_pairs_malene[which(test_pairs_malene$number_affected>=4),]
+test_pairs_malene$adjust_pval <- NA
+test_pairs_malene$adjust_pval <- p.adjust(test_pairs_malene$p_val, method="BH")
+colnames(test_pairs_malene)[1:3] <- c("cancer_type","element_type", "candidate")
+test_pairs_malene
 ```
 Write the results into tables:
 ```{r}
-write.table(test_pairs, file="4+samples_FredrikksonSignif_survival.tab", sep="\t", quote=FALSE)
+write.table(test_pairs_malene, file="4+samples_MalenesCandidates_survival.tab", sep="\t", quote=FALSE)
 ```
 Perform combination of p-values across cancer types:
 ```{r}
