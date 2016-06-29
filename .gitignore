@@ -24,6 +24,13 @@ gwf_log
 # PowerPoints (Please avoid)
 *.ppt
 
+Excel spreadsheets
+*.xls
+*.xlsx
+
+Temporary save files
+*.tab
+
 # TeX auxilary files
 *.aux
 *.lof
