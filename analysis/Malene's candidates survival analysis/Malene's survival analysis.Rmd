@@ -80,7 +80,7 @@ test_pairs_malene <- test_pairs_malene[which(test_pairs_malene$number_affected>=
 test_pairs_malene$adjust_pval <- NA
 test_pairs_malene$adjust_pval <- p.adjust(test_pairs_malene$p_val, method="BH")
 colnames(test_pairs_malene)[1:3] <- c("cancer_type","element_type", "candidate")
-test_pairs_malene
+test_pairs_malene$candidate <- paste(test_pairs_malene$element_type, test_pairs_malene$candidate, sep="_")
 ```
 Write the results into tables:
 ```{r}
@@ -89,31 +89,30 @@ write.table(test_pairs_malene, file="4+samples_MalenesCandidates_survival.tab", 
 Perform combination of p-values across cancer types:
 ```{r}
 source("../../scripts/fishersMethod.R")
-candidate_combinations <- data.frame(candidate=names(summary(factor(test_pairs$candidate))))
-candidate_combinations$element_type <- NA
-candidate_combinations$n_total_mutations_combined <- NA
-candidate_combinations$n_types_combined <- NA
-candidate_combinations$types_combined <- NA
-candidate_combinations$combined_pvals <- NA
-candidate_combinations$fishers_pval <- NA
-for (i in 1:nrow(candidate_combinations)) {
-  candidate_combinations$element_type[i] <- test_pairs$element_type[which(test_pairs$candidate==candidate_combinations$candidate[i])[1]]
-  candidate_combinations$n_types_combined[i] <- length(test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])])
-  candidate_combinations$types_combined[i] <- paste(test_pairs$cancer_type[which(test_pairs$candidate==candidate_combinations$candidate[i])],collapse=";")
-  candidate_combinations$n_total_mutations_combined[i] <- sum(test_pairs$number_affected[which(test_pairs$candidate==candidate_combinations$candidate[i])])
-  candidate_combinations$fishers_pval[i] <- fishersMethod(test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])])
-  candidate_combinations$combined_pvals[i] <- paste(format.pval(digits=3,test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])]), collapse=";")
+candidate_combinations_malene <- data.frame(candidate=names(summary(factor(test_pairs_malene$candidate), maxsum=nrow(test_pairs_malene))))
+candidate_combinations_malene$element_type <- NA
+candidate_combinations_malene$n_total_mutations_combined <- NA
+candidate_combinations_malene$n_types_combined <- NA
+candidate_combinations_malene$types_combined <- NA
+candidate_combinations_malene$combined_pvals <- NA
+candidate_combinations_malene$fishers_pval <- NA
+for (i in 1:nrow(candidate_combinations_malene)) {
+  candidate_combinations_malene$element_type[i] <- test_pairs_malene$element_type[which(test_pairs_malene$candidate==candidate_combinations_malene$candidate[i])[1]]
+  candidate_combinations_malene$n_types_combined[i] <- length(test_pairs_malene$p_val[which(test_pairs_malene$candidate==candidate_combinations_malene$candidate[i])])
+  candidate_combinations_malene$types_combined[i] <- paste(test_pairs_malene$cancer_type[which(test_pairs_malene$candidate==candidate_combinations_malene$candidate[i])],collapse=";")
+  candidate_combinations_malene$n_total_mutations_combined[i] <- sum(test_pairs_malene$number_affected[which(test_pairs_malene$candidate==candidate_combinations_malene$candidate[i])])
+  candidate_combinations_malene$fishers_pval[i] <- fishersMethod(test_pairs_malene$p_val[which(test_pairs_malene$candidate==candidate_combinations_malene$candidate[i])])
+  candidate_combinations_malene$combined_pvals[i] <- paste(format.pval(digits=3,test_pairs_malene$p_val[which(test_pairs_malene$candidate==candidate_combinations_malene$candidate[i])]), collapse=";")
 }
-candidate_combinations <- candidate_combinations[which(candidate_combinations$n_types_combined>1),]
-candidate_combinations <- candidate_combinations[-10,] # remove one of TERT elements manually for now
-candidate_combinations$adjust_pval <- NA
-candidate_combinations$adjust_pval[which(candidate_combinations$element_type=="cds")] <- p.adjust(candidate_combinations$fishers_pval[which(candidate_combinations$element_type=="cds")], method="BH")
-candidate_combinations$adjust_pval[which(candidate_combinations$element_type!="cds")] <- p.adjust(candidate_combinations$fishers_pval[which(candidate_combinations$element_type!="cds")], method="BH")
+# candidate_combinations_malene <- candidate_combinations_malene[which(candidate_combinations_malene$n_types_combined>1),] # optional - remove candidates that were not combined across cancer types
+candidate_combinations$qval <- NA
+candidate_combinations_malene$qval[which(candidate_combinations_malene$element_type=="cds")] <- p.adjust(candidate_combinations_malene$fishers_pval[which(candidate_combinations_malene$element_type=="cds")], method="BH")
+candidate_combinations_malene$qval[which(candidate_combinations_malene$element_type!="cds")] <- p.adjust(candidate_combinations_malene$fishers_pval[which(candidate_combinations_malene$element_type!="cds")], method="BH")
 ```
 Write the results into tables:
 ```{r}
 getwd()
-write.table(candidate_combinations, file="4+samples_FredrikksonSignif_survival_acrossTypesCombinations.tab", sep="\t", quote=FALSE)
+write.table(candidate_combinations_malene, file="4+samples_MalenesCandidates_survival_acrossTypesCombinations.tab", sep="\t", quote=FALSE)
 ```
 Perform combination of p-values across element types:
 ```{r}

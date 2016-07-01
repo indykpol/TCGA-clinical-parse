@@ -28,6 +28,9 @@ Excel spreadsheets
 *.xls
 *.xlsx
 
+PDFs
+*.pdf
+
 Temporary save files
 *.tab
 
