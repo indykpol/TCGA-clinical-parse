@@ -139,9 +139,74 @@ candidate_combinations$qval[which(candidate_combinations$element_type=="cds")] <
 candidate_combinations$qval[which(candidate_combinations$element_type!="cds")] <- p.adjust(candidate_combinations$fishers_pval[which(candidate_combinations$element_type!="cds")], method="BH")
 
 ```
-
-Finally, plot some survival analyses:
+Perform association analysis between marker status and tumour grade/stage using Fisher's exact test:
 ```{r}
-source("../../scripts/ggkm.R")
+fredriksson_types_stages <- fredriksson_types[-c(4,8,14)]
+summary <- summary(factor(paste(fredriksson_malenes_calls$cancer_type, fredriksson_malenes_calls$element_ID, sep="_")), maxsum=nrow(fredriksson_malenes_calls))
+names <- names(summary[which(summary >=1)])
+test_pairs_stage <- as.data.frame(strsplit2matrix(names,"_"))
+test_pairs_stage <- test_pairs_stage[which(test_pairs_stage[,1]%in% fredriksson_types_stages),]
+test_pairs_stage$number_affected <- NA
+test_pairs_stage$number_withStage <- NA
+test_pairs_stage$p_val <- NA
+
+for (i in 1:nrow(test_pairs_stage)) {
+  type <- test_pairs_stage[i,1]
+  element <- test_pairs_stage[i,2]
+  temp_table <- datasets[[type]]@Clinical[unlist(fredriksson_sets[type]),c("pathology_T_stage","pathologic_stage")]
+  temp_table$marker_status <- 0
+  temp_table[fredriksson_malenes_calls[which(fredriksson_malenes_calls$cancer_type==type & fredriksson_malenes_calls$element_ID==element),1],"marker_status"] <- 1
+  temp_table <- temp_table[!is.na(temp_table$pathology_T_stage),]
+  test_pairs_stage$element_type[i] <- fredriksson_malenes_calls[which(fredriksson_malenes_calls$cancer_type==type & fredriksson_malenes_calls$element_ID==element)[1],4]
+  test_pairs_stage$nearest_gene[i] <- fredriksson_malenes_calls$nearest_gene[which(fredriksson_malenes_calls$element_ID==element)[1]]
+  test_pairs_stage$nearest_CDS[i] <- fredriksson_malenes_calls$nearest_CDS[which(fredriksson_malenes_calls$element_ID==element)[1]]
+  if (sum(temp_table$marker_status)>0) {
+    levels <- names(summary(factor(temp_table$pathology_T_stage)))
+    levels <- levels[!(levels=="NA's")]
+    cont_table <- data.frame(row.names=levels, mutated=rep(0, length(levels)), non_mutated=rep(0, length(levels)))
+    cont_table$mutated <- summary(factor(temp_table$pathology_T_stage[which(temp_table[,3]==1)], levels=levels, ordered=T))
+    cont_table$non_mutated <- summary(factor(temp_table$pathology_T_stage[which(temp_table[,3]==0)], levels=levels, ordered=T))
+    test_pairs_stage$p_val[i] <- fisher.test(cont_table)$p.value
+  }
+  test_pairs_stage$number_affected[i] <- length(which(temp_table[,3]==1))
+  test_pairs_stage$number_withStage[i] <- nrow(temp_table)
+}
+test_pairs_stage <- test_pairs_stage[which(test_pairs_stage$number_affected>=2),]
+test_pairs_stage <- test_pairs_stage[!is.na(test_pairs_stage$p_val),]
+colnames(test_pairs_stage)[1:2] <- c("cancer_type", "candidate")
+test_pairs_stage$qval <- NA
+test_pairs_stage$qval[which(test_pairs_stage$element_type=="cds")] <- p.adjust(test_pairs_stage$p_val[which(test_pairs_stage$element_type=="cds")], method="BH")
+test_pairs_stage$qval[which(test_pairs_stage$element_type!="cds")] <- p.adjust(test_pairs_stage$p_val[which(test_pairs_stage$element_type!="cds")], method="BH")
+```
+Perform combination of association p-values across element types:
+```{r}
+source("../../scripts/fishersMethod.R")
+candidate_combinations_stage <- data.frame(candidate=names(summary(factor(test_pairs_stage$candidate), maxsum=nrow(test_pairs_stage))))
+candidate_combinations_stage$element_type <- NA
+candidate_combinations_stage$nearest_gene <- NA
+candidate_combinations_stage$nearest_CDS <- NA
+candidate_combinations_stage$n_total_mutations_combined <- NA
+candidate_combinations_stage$n_types_combined <- NA
+candidate_combinations_stage$types_combined <- NA
+candidate_combinations_stage$combined_pvals <- NA
+candidate_combinations_stage$fishers_pval <- NA
+for (i in 1:nrow(candidate_combinations_stage)) {
+  candidate_combinations_stage$element_type[i] <- test_pairs_stage$element_type[which(test_pairs_stage$candidate==candidate_combinations_stage$candidate[i])[1]]
+  candidate_combinations_stage$nearest_gene[i] <- fredriksson_malenes_calls$nearest_gene[which(fredriksson_malenes_calls$element_ID==candidate_combinations_stage$candidate[i])[1]]
+  candidate_combinations_stage$nearest_CDS[i] <- fredriksson_malenes_calls$nearest_CDS[which(fredriksson_malenes_calls$element_ID==candidate_combinations_stage$candidate[i])[1]]
+  candidate_combinations_stage$n_types_combined[i] <- length(test_pairs_stage$p_val[which(test_pairs_stage$candidate==candidate_combinations_stage$candidate[i])])
+  candidate_combinations_stage$types_combined[i] <- paste(test_pairs_stage$cancer_type[which(test_pairs_stage$candidate==candidate_combinations_stage$candidate[i])],collapse=";")
+  candidate_combinations_stage$n_total_mutations_combined[i] <- sum(test_pairs_stage$number_affected[which(test_pairs_stage$candidate==candidate_combinations_stage$candidate[i])])
+  candidate_combinations_stage$fishers_pval[i] <- fishersMethod(test_pairs_stage$p_val[which(test_pairs_stage$candidate==candidate_combinations_stage$candidate[i])])
+  candidate_combinations_stage$combined_pvals[i] <- paste(format.pval(digits=3,test_pairs_stage$p_val[which(test_pairs_stage$candidate==candidate_combinations_stage$candidate[i])]), collapse=";")
+}
+candidate_combinations_stage$qval <- NA
+candidate_combinations_stage$qval[which(candidate_combinations_stage$element_type=="cds")] <- p.adjust(candidate_combinations_stage$fishers_pval[which(candidate_combinations_stage$element_type=="cds")], method="BH")
+candidate_combinations_stage$qval[which(candidate_combinations_stage$element_type!="cds")] <- p.adjust(candidate_combinations_stage$fishers_pval[which(candidate_combinations_stage$element_type!="cds")], method="BH")
 
 ```
+Write the results into tables:
+```{r}
+write.table(candidate_combinations_stage, file="2+samples_FredrikksonSignif_uniqElements_stage_acrossCancTypesCombinations_geneCollapse_.tab", sep="\t", quote=FALSE)
+write.table(candidate_combinations_stage, file="1+sample_FredrikksonSignif_stage_acrossCancTypesCombinations.tab", sep="\t", quote=FALSE)
+write.table(test_pairs_stage, file="1+sample_FredrikksonSignif_stage.tab", sep="\t", quote=FALSE)
