@@ -1,7 +1,7 @@
 ggkm <- function(sfit,
          table = TRUE,
          returns = FALSE,
-         xlabs = "Time",
+         xlabs = "Time (days)",
          ylabs = "Survival Probability",
          xlims = c(0,max(sfit$time)),
          ylims = c(0,1),
@@ -9,8 +9,12 @@ ggkm <- function(sfit,
          ystrataname = NULL,
          timeby = 100,
          main = "Kaplan-Meier Plot",
-         pval = TRUE,
+         plot_pval = TRUE,
+		 pval = NULL,
          subs = NULL,
+		 temp_table = NULL,
+		 ticks = FALSE,
+		 ticks_shape="|",
          ...) {
     
     #############
@@ -21,6 +25,7 @@ ggkm <- function(sfit,
     require(survival)
     require(gridExtra)
     require(plyr)
+	
     
     #################################
     # sorting the use of subsetting #
@@ -88,9 +93,9 @@ ggkm <- function(sfit,
         geom_step(aes(linetype = strata), size = 0.7) +
         theme_bw() +
         theme(axis.title.x = element_text(vjust = 0.5)) +
-        scale_x_continuous(xlabs, breaks = times, limits = xlims) +
-        scale_y_continuous(ylabs, limits = ylims) +
-        theme(legend.position = c(ifelse(m < 10, .28, .35),ifelse(d < 4, .25, .35))) +    # MOVE LEGEND HERE [first is x dim, second is y dim]
+        scale_x_continuous(name=xlabs, breaks = times, limits = xlims) +
+        scale_y_continuous(name=ylabs, limits = ylims) +
+        theme(legend.position = c(ifelse(m < 10, .78, .85),ifelse(d < 4, .8, .9))) +    # MOVE LEGEND HERE [first is x dim, second is y dim]
         theme(legend.key = element_rect(colour = NA)) +
         labs(linetype = ystrataname) +
         theme(plot.margin = unit(c(0, 1, .5,ifelse(m < 10, 1.5, 2.5)),"lines")) +
@@ -98,20 +103,35 @@ ggkm <- function(sfit,
     
     ## Create a blank plot for place-holding
     ## .df <- data.frame()
-    blank.pic <- ggplot(.df, aes(time, surv)) +
-        geom_blank() + theme_bw()
+    blank.pic <- ggplot(.df) + geom_blank() + theme_void()
     
     #####################
     # p-value placement #
     #####################a
     
-    if(pval) {
-        sdiff <- survdiff(eval(sfit$call$formula), data = eval(sfit$call$data))
-        pval <- pchisq(sdiff$chisq,length(sdiff$n) - 1,lower.tail = FALSE)
+    if(plot_pval) {
+		if (is.na(pval)) {
+			sdiff <- survdiff(eval(sfit$call$formula), data = eval(sfit$call$data))
+			pval <- pchisq(sdiff$chisq,length(sdiff$n) - 1,lower.tail = FALSE)
+		}
         pvaltxt <- ifelse(pval < 0.0001,"p < 0.0001",paste("p =", signif(pval, 3)))
         p <- p + annotate("text",x = 0.6 * max(sfit$time),y = 0.1,label = pvaltxt)
     }
     
+	#############
+    # ticks #
+    #############
+	if (ticks) {
+		ticks <- temp_table[which(temp_table$vital_status==0),c(3,4)]
+		colnames(ticks)[1:2] <- c("time", "strata")
+		ticks$strata <- paste("marker_status=", ticks$strata, sep="")
+		ticks$surv <- NA
+		.df <- .df[order(.df$time),]
+		for (i in 1:nrow(ticks)) {
+			ticks$surv[i] <- .df[intersect(which(.df$time >= ticks$time[i]),  which(as.character(.df$strata)==ticks$strata[i]))[1],2]
+		}
+		p <- p + geom_point(aes(x=time, y=surv, colour=strata), data = ticks, shape=ticks_shape, size=2.5, stroke=1.5)
+	}
     ###################################################
     # Create table graphic to include at-risk numbers #
     ###################################################
@@ -123,23 +143,28 @@ ggkm <- function(sfit,
             n.risk = summary(sfit,times = times,extend = TRUE)$n.risk[subs3]
         )
         risk.data$strata <- factor(risk.data$strata, levels=rev(levels(risk.data$strata)))
-        
-        data.table <- ggplot(risk.data, aes(x = time, y = strata, label = format(n.risk, nsmall = 0))) +
-		# , color = strata
+       
+        data.table <- ggplot(risk.data,aes(x = time, y = strata, label = format(n.risk, nsmall = 0))) +
+            #, color = strata)) +
             geom_text(size = 3.5) + theme_bw() +
             scale_y_discrete(breaks = as.character(levels(risk.data$strata)),
                              labels = rev(ystratalabs)) +
-            # scale_y_discrete(#format1ter = abbreviate,
-            # breaks = 1:3,
-            # labels = ystratalabs) +
-            scale_x_continuous("Numbers at risk", limits = xlims) + theme_bw() + theme(axis.title.x = element_text(size = 10, vjust = 1), axis.text.y = element_text(face = "bold",hjust = 1), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(),axis.text.x = element_blank(), axis.ticks = element_blank())
-        
+                                 # scale_y_discrete(#format1ter = abbreviate,
+                                 # breaks = 1:3,
+                                 # labels = ystratalabs) +
+                                 scale_x_continuous("Numbers at risk", limits = xlims) +
+                                 theme(axis.title.x = element_text(size = 10, vjust = 1),
+                                      panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+                                      panel.border = element_blank(),axis.text.x = element_blank(),
+                                      axis.ticks = element_blank(), axis.text.y = element_text(face = "bold", size=10, angle=0))
+       
         data.table <- data.table +
             theme(legend.position = "none") + xlab(NULL) + ylab(NULL)
-        
+       
         data.table <- data.table +
-            theme(plot.margin = unit(c(-1.5, 1, 0.1, ifelse(m < 10, 2.5, 3.5) - 0.28 * m), "lines")) # ADJUST POSITION OF TABLE FOR AT RISK
-        
+            theme(plot.margin = unit(c(-1.5, 1, 1, ifelse(m < 10, 2.5, 3.5) - 0.26 * m), "lines")) # ADJUST POSITION OF TABLE FOR AT RISK
+			# theme(plot.margin = unit(c(-1.5, 1, 0.1, ifelse(m < 10, 2.5, 3.5) - 0.26 * m), "lines")) # ADJUST POSITION OF TABLE FOR AT RISK
+		
         #######################
         # Plotting the graphs #
         #######################
@@ -148,7 +173,7 @@ ggkm <- function(sfit,
         ## p <- addGrob(p, textGrob(x = unit(.8, "npc"), y = unit(.25, "npc"), label = pvaltxt,
         ## gp = gpar(fontsize = 12)))
         grid.arrange(p, blank.pic, data.table, clip = FALSE, nrow = 3,
-                     ncol = 1, heights = unit(c(2, .1, .25),c("null", "null", "null")))
+                     ncol = 1, heights = unit(c(2, .1, .25), c("null", "null", "null")))
         
         if(returns) {
             a <- arrangeGrob(p, blank.pic, data.table, clip = FALSE, nrow = 3,

@@ -1,0 +1,218 @@
+---
+title: "Survival analysis of exome data using clinical annotations from TCGA for Henrik"
+output: html_notebook
+author: "Michał Switnicki"
+date: "2016-08-16"
+---
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook.
+
+First, obtain clinical data:
+```{r}
+running_date <- getFirehoseRunningDates()[1]
+available_sets <- getFirehoseDatasets()
+datasets <- list()
+for (i in 1:length(available_sets)){
+  datasets[[available_sets[i]]] <- getFirehoseData(dataset=available_sets[i], runDate=running_date, forceDownload = TRUE, Clinic=TRUE)
+}
+```
+Secondly, read the samples, match with the survival data and determine the working set:
+```{r}
+fredriksson_samples <- read.delim(file="../../data/tcga505.samples", sep="\t", col.names = c("sample_id", "cancer_type"), stringsAsFactors = F, header=FALSE)
+fredriksson_samples[fredriksson_samples[,2]=="CRC",2] <- "COAD" # replace CRC with updated TCGA symbol - COAD
+exome_samples <- read.delim(file="../../data/tcga.vcf.bed7.no.dbsnp.no.multalt.mut.type.sort.indel.changed.samples", sep="\t", col.names = c("sample_id", "cancer_type"), stringsAsFactors = F, header=FALSE)
+exome_samples[exome_samples[,2]=="CRC",2] <- "COAD" # replace CRC with updated TCGA symbol - COAD
+exome_samples <- exome_samples[-which(exome_samples[,1] %in% substr(fredriksson_samples[,1], 1,12)),] # subtract the already analysed Fredriksson samples
+
+exome_types <- levels(factor(exome_samples[,2]))
+exome_sets <- NULL
+for (i in 1:length(exome_types)) {
+  exome_sets[[exome_types[i]]] <- intersect(rownames(datasets[[exome_types[i]]]@Clinical), tolower(gsub("-", ".", exome_samples[exome_samples[,2]==exome_types[i],1])))
+}
+
+exome_sets_survival <- NULL
+exome_survivals <- NULL
+for (i in 1:length(exome_types)) {
+  survival <- datasets[[exome_types[i]]]@Clinical[exome_sets[[exome_types[i]]],3:5]
+  survival[which(survival[,1]==1),3] <- survival[which(survival[,1]==1),2]
+  survival <- survival[!is.na(survival[,3]),]
+  rownames_temp <- rownames(survival)
+  survival <- as.data.frame(apply(survival,2,as.numeric))
+  rownames(survival) <- rownames_temp
+  exome_survivals[[exome_types[i]]] <- survival
+  exome_sets_survival[[exome_types[i]]] <- rownames(survival[!is.na(survival[,3]),])
+}
+rm(rownames_temp)
+data.frame(all=summary(factor(exome_samples[,2])), mapped=unlist(lapply(exome_sets, length)), with_survival_data=unlist(lapply(exome_sets_survival, length)))
+```
+Median, mean follow-up, deaths:
+```{r}
+data.frame(all=summary(factor(exome_samples[,2])), mapped=unlist(lapply(exome_sets, length)), with_survival_data=unlist(lapply(exome_sets_survival, length)), median_follow_up=trunc(unlist(lapply(exome_survivals, function(x) median(as.numeric(x[,3]))))), mean_follow_up=trunc(unlist(lapply(exome_survivals, function(x) mean(as.numeric(x[,3]))))), alive=unlist(lapply(exome_survivals, FUN=function(x) sum(x$vital_status))))
+```
+Read-in the mutation anotations:
+```{r}
+exome_signif_calls <- read.delim(file="../../data/sanger.comb.ABCDE.bh.A.0.25.bh.E.0.25.rank.gene.tf.cosmic.cancer.cat.overlap.rank.1.uniq.element.id.bed.type.gene.intersect.tcga.exome", sep="\t", col.names = c("chr.element" , "start.element" , "end.element" , "element_ID" , "element_type" , "nearest_gene" , "nearest_CDS" , "chr.mutation" , "start.mutation" , "end.mutation" , "ref.alt.mutation" , "sample_id" , "cancer_type" , "type.mutation (indel.tcga/snv.tcga)" , "ignore"), stringsAsFactors = F, header = FALSE) # element-level
+exome_signif_calls <- read.delim(file="../../data/tcga505.comb.ABCDE.bh.A.0.25.bh.E.0.25.rank.gene.tf.cosmic.cancer.cat.overlap.rank.1.uniq.element.id.bed.gene.type.intersect.tcga.exome", sep="\t", col.names = c("chr.element" , "start.element" , "end.element" , "element_ID" , "element_type" , "nearest_gene" , "nearest_CDS" , "chr.mutation" , "start.mutation" , "end.mutation" , "ref.alt.mutation" , "sample_id" , "cancer_type" , "type.mutation (indel.tcga/snv.tcga)" , "ignore"), stringsAsFactors = F, header = FALSE) # gene-level
+```
+Curate the set
+```{r}
+exome_signif_calls[exome_signif_calls[,2]=="CRC",2] <- "COAD" # replace CRC with updated TCGA symbol - COAD
+exome_signif_calls$sample_id <- tolower(gsub("-", ".", exome_signif_calls$sample_id))
+rm.warnings()
+exome_signif_calls$combination <- paste(exome_signif_calls$element_ID, exome_signif_calls$sample_id, sep="_")
+exome_signif_calls_temp <- NULL
+for (i in 1:length(unique(exome_signif_calls$combination))) {
+  element <- unique(exome_signif_calls$combination)[i]
+  exome_signif_calls_temp <- rbind(exome_signif_calls_temp, exome_signif_calls[which(exome_signif_calls$combination==element)[1],])
+}
+exome_signif_calls <- exome_signif_calls_temp
+rm(exome_signif_calls_temp)
+```
+Identify element-cancer type pairs to test:
+```{r}
+summary <- summary(factor(paste(exome_signif_calls$cancer_type, exome_signif_calls$element_ID, sep="_")), maxsum=nrow(exome_signif_calls))
+names <- names(summary[which(summary >=3)])
+```
+Prepare test_pairs table where intermediate results will be stored:
+```{r}
+source("../../scripts/strsplit2matrix.R")
+test_pairs <- as.data.frame(strsplit2matrix(names,"_"))
+test_pairs$element_type <- NA
+test_pairs$nearest_gene <- NA
+test_pairs$nearest_CDS <- NA
+test_pairs$number_affected <- NA
+test_pairs$number_withSurvival <- NA
+test_pairs$p_val <- NA
+```
+Survival analysis using cox proportional hazards model (one-sided p-val via KM):
+```{r, warning=FALSE}
+library(survival)
+for (i in 1:nrow(test_pairs)) {
+  type <- test_pairs[i,1]
+  element <- test_pairs[i,2]
+  temp_table <- exome_survivals[[type]]
+  test_pairs$element_type[i] <- exome_signif_calls[which(exome_signif_calls$cancer_type==type & exome_signif_calls$element_ID==element)[1],"element_type"]
+   test_pairs$nearest_gene[i] <- exome_signif_calls$nearest_gene[which(exome_signif_calls$element_ID==element)[1]]
+  test_pairs$nearest_CDS[i] <- exome_signif_calls$nearest_CDS[which(exome_signif_calls$element_ID==element)[1]]
+  temp_table$marker_status <- 0
+  temp_table[exome_signif_calls[which(exome_signif_calls$cancer_type==type & exome_signif_calls$element_ID==element),"sample_id"],"marker_status"] <- 1
+  temp_table <- temp_table[!is.na(temp_table$days_to_last_followup),]
+  if (sum(temp_table$marker_status)>0) {
+    sfit_cox <- coxph(Surv(days_to_last_followup,vital_status)~marker_status, data=temp_table)
+    sfit <- survfit(Surv(days_to_last_followup,vital_status)~marker_status, data=temp_table)
+    sdiff <- survdiff(eval(sfit$call$formula), data = eval(sfit$call$data))
+    pval <- pchisq(sdiff$chisq, length(sdiff$n) - 1,lower.tail = FALSE)
+    if (!is.na(summary(sfit_cox)$coefficients[1])) {
+      if (summary(sfit_cox)$coefficients[1] > 0) pval <- pval/2 else pval <- 1-(pval/2)
+    }
+    test_pairs$p_val[i] <- pval
+  }
+  test_pairs$number_withSurvival[i] <- nrow(temp_table)
+  test_pairs$number_affected[i] <- length(which(temp_table[,4]==1))
+}
+test_pairs <- test_pairs[which(test_pairs$number_affected>=3),] # filter likely non-robust results
+test_pairs$qval <- NA
+test_pairs$qval[which(test_pairs$element_type=="cds")] <- p.adjust(test_pairs$p_val[which(test_pairs$element_type=="cds")], method="BH")
+test_pairs$qval[which(test_pairs$element_type!="cds")] <- p.adjust(test_pairs$p_val[which(test_pairs$element_type!="cds")], method="BH")
+colnames(test_pairs)[1:2] <- c("cancer_type", "candidate")
+```
+Write the results into tables:
+```{r}
+write.table(test_pairs, file="1+samples_ExomeSignif_survival.tab", sep="\t", quote=FALSE)
+rm.warnings()
+```
+Perform combination of p-values across cancer types:
+```{r}
+source("../../scripts/fishersMethod.R")
+candidate_combinations <- data.frame(candidate=names(summary(factor(test_pairs$candidate), maxsum=nrow(test_pairs))))
+candidate_combinations$element_type <- NA
+candidate_combinations$nearest_gene <- NA
+candidate_combinations$nearest_CDS <- NA
+candidate_combinations$n_total_mutations_combined <- NA
+candidate_combinations$n_types_combined <- NA
+candidate_combinations$types_combined <- NA
+candidate_combinations$combined_pvals <- NA
+candidate_combinations$fishers_pval <- NA
+for (i in 1:nrow(candidate_combinations)) {
+  candidate_combinations$element_type[i] <- test_pairs$element_type[which(test_pairs$candidate==candidate_combinations$candidate[i])[1]]
+  candidate_combinations$nearest_gene[i] <- exome_signif_calls$nearest_gene[which(exome_signif_calls$element_ID==candidate_combinations$candidate[i])[1]]
+  candidate_combinations$nearest_CDS[i] <- exome_signif_calls$nearest_CDS[which(exome_signif_calls$element_ID==candidate_combinations$candidate[i])[1]]
+  candidate_combinations$n_types_combined[i] <- length(test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])])
+  candidate_combinations$types_combined[i] <- paste(test_pairs$cancer_type[which(test_pairs$candidate==candidate_combinations$candidate[i])],collapse=";")
+  candidate_combinations$n_total_mutations_combined[i] <- sum(test_pairs$number_affected[which(test_pairs$candidate==candidate_combinations$candidate[i])])
+  candidate_combinations$fishers_pval[i] <- fishersMethod(test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])])
+  candidate_combinations$combined_pvals[i] <- paste(format.pval(digits=3,test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])]), collapse=";")
+}
+candidate_combinations$qval <- NA
+candidate_combinations$qval[which(candidate_combinations$element_type=="cds")] <- p.adjust(candidate_combinations$fishers_pval[which(candidate_combinations$element_type=="cds")], method="BH")
+candidate_combinations$qval[which(candidate_combinations$element_type!="cds")] <- p.adjust(candidate_combinations$fishers_pval[which(candidate_combinations$element_type!="cds")], method="BH")
+```
+Write the results into tables:
+```{r}
+# getwd()
+write.table(candidate_combinations, file="3+samples_ExomeSignif_survival_acrossTypesCombinations_gene-level.tab", sep="\t", quote=FALSE)
+```
+
+Combine elements within the same CDS-es and test the survival.
+```{r}
+# Identify CDS-cancer type pairs to test:
+exome_signif_CDS <- exome_signif_calls[!exome_signif_calls$element_type=="cds",]
+exome_signif_CDS <- unique(exome_signif_CDS[c("sample_id", "cancer_type", "nearest_CDS")])
+summary <- summary(factor(paste(exome_signif_CDS$cancer_type, exome_signif_CDS$nearest_CDS, sep="_")), maxsum=nrow(exome_signif_CDS))
+names <- names(summary[which(summary >=3)])
+source("../../scripts/strsplit2matrix.R")
+test_pairs <- as.data.frame(strsplit2matrix(names,"_"))
+test_pairs$number_affected <- NA
+test_pairs$number_withSurvival <- NA
+test_pairs$p_val <- NA
+library(survival)
+for (i in 1:nrow(test_pairs)) {
+  type <- test_pairs[i,1]
+  element <- test_pairs[i,2]
+  temp_table <- exome_survivals[[type]]
+  temp_table$marker_status <- 0
+  temp_table[exome_signif_CDS[which(exome_signif_CDS$cancer_type==type & exome_signif_CDS$nearest_CDS==element),1],"marker_status"] <- 1
+  temp_table <- temp_table[!is.na(temp_table$days_to_last_followup),]
+  if (sum(temp_table$marker_status)>0) {
+    sfit_cox <- coxph(Surv(days_to_last_followup,vital_status)~marker_status, data=temp_table)
+    sfit <- survfit(Surv(days_to_last_followup,vital_status)~marker_status, data=temp_table)
+    sdiff <- survdiff(eval(sfit$call$formula), data = eval(sfit$call$data))
+    pval <- pchisq(sdiff$chisq, length(sdiff$n) - 1,lower.tail = FALSE)
+    if (!is.na(summary(sfit_cox)$coefficients[1])) {
+      if (summary(sfit_cox)$coefficients[1] > 0) pval <- pval/2 else pval <- 1-(pval/2)
+    }
+    test_pairs$p_val[i] <- pval
+  }
+  test_pairs$number_withSurvival[i] <- nrow(temp_table)
+  test_pairs$number_affected[i] <- length(which(temp_table[,4]==1))
+}
+test_pairs <- test_pairs[which(test_pairs$number_affected>=3),] # filter likely non-robust results
+test_pairs$qval <- p.adjust(test_pairs$p_val, method="BH")
+colnames(test_pairs)[1:2] <- c("cancer_type", "candidate")
+```
+Plot survival curves:
+```{r}
+ggkm(sfit, timeby = 500, returns=TRUE, table=TRUE, pval=pval, main=paste(test_pairs[i,2], "\r\n",test_pairs[i,1], sep=""), ticks=TRUE, temp_table=temp_table)
+```
+Perform combination of p-values across cancer types:
+```{r}
+source("../../scripts/fishersMethod.R")
+candidate_combinations <- data.frame(candidate=names(summary(factor(test_pairs$candidate), maxsum=nrow(test_pairs))))
+candidate_combinations$n_total_mutations_combined <- NA
+candidate_combinations$n_types_combined <- NA
+candidate_combinations$types_combined <- NA
+candidate_combinations$combined_pvals <- NA
+candidate_combinations$fishers_pval <- NA
+for (i in 1:nrow(candidate_combinations)) {
+  candidate_combinations$n_types_combined[i] <- length(test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])])
+  candidate_combinations$types_combined[i] <- paste(test_pairs$cancer_type[which(test_pairs$candidate==candidate_combinations$candidate[i])],collapse=";")
+  candidate_combinations$n_total_mutations_combined[i] <- sum(test_pairs$number_affected[which(test_pairs$candidate==candidate_combinations$candidate[i])])
+  candidate_combinations$fishers_pval[i] <- fishersMethod(test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])])
+  candidate_combinations$combined_pvals[i] <- paste(format.pval(digits=3,test_pairs$p_val[which(test_pairs$candidate==candidate_combinations$candidate[i])]), collapse=";")
+}
+candidate_combinations$qval <- p.adjust(candidate_combinations$fishers_pval, method="BH")
+```
+Write the results into tables:
+```{r}
+# getwd()
+write.table(candidate_combinations, file="3+samples_ExomeSignif_CDScomb_surv_acrossTypesComb_gene-level.tab", sep="\t", quote=FALSE)
+```
