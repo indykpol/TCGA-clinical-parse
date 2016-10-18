@@ -1,2 +1,7 @@
-This is a project wihich aims to collect and analyse clinical data from the TCGA consortium.
-It currently uses RTCGAToolbox R package to obtain pre-parsed clinical data, and test association of tumour stage/grade, as well as survival with candidate calls generated in various projects throughout the group.
+This is a project wihich aims to collect and analyse clinical 
+data from the TCGA consortium.
+
+It currently uses RTCGAToolbox R package to obtain pre-parsed 
+clinical data, and test association of tumour stage/grade, as 
+well as survival with candidate calls generated in various 
+projects throughout the group.
