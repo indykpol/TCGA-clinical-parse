@@ -130,7 +130,7 @@ for (i in 1:nrow(test_pairs)) {
   if (sum(temp_table$marker_status)>0) {
     sfit_cox <- coxph(Surv(days_to_last_followup,vital_status)~marker_status, data=temp_table)
     sfit <- survfit(Surv(days_to_last_followup,vital_status)~marker_status, data=temp_table)
-    #print(ggkm(sfit, timeby = 500, returns=TRUE, table=FALSE, main=i))
+    #print(ggkm(sfit, timeby = 500, returns=TRUE, table=TRUE, pval=pval, main=paste(test_pairs[i,2], "\r\n",test_pairs[i,1], sep=""), ticks=TRUE, temp_table=temp_table))
     sdiff <- survdiff(eval(sfit$call$formula), data = eval(sfit$call$data))
     pval <- pchisq(sdiff$chisq, length(sdiff$n) - 1,lower.tail = FALSE)
     #pval <- summary(sfit_cox)$logtest[3]

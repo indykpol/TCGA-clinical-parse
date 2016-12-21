@@ -135,14 +135,14 @@ ggkm <- function(sfit,
     ###################################################
     # Create table graphic to include at-risk numbers #
     ###################################################
-    
     if(table) {
         risk.data <- data.frame(
-            strata = factor(summary(sfit,times = times,extend = TRUE)$strata[subs3]),
-            time = summary(sfit,times = times,extend = TRUE)$time[subs3],
-            n.risk = summary(sfit,times = times,extend = TRUE)$n.risk[subs3]
+            strata = factor(summary(sfit, times = times, extend = TRUE)$strata[subs3]),
+            time = summary(sfit, times = times, extend = TRUE)$time[subs3],
+            n.risk = summary(sfit, times = times, extend = TRUE)$n.risk[subs3]
         )
         risk.data$strata <- factor(risk.data$strata, levels=rev(levels(risk.data$strata)))
+		
        
         data.table <- ggplot(risk.data,aes(x = time, y = strata, label = format(n.risk, nsmall = 0))) +
             #, color = strata)) +
