@@ -5,6 +5,7 @@
 # Derived data should be reproducible
 # create an output subfolder for smaller analysis
 data
+*.RData
 output
 figures
 
