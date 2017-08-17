@@ -6,6 +6,7 @@
 # create an output subfolder for smaller analysis
 data
 *.RData
+
 output
 figures
 
